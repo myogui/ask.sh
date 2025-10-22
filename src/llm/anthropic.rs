@@ -100,6 +100,10 @@ impl LLMProvider for AnthropicProvider {
         &self.model
     }
 
+    fn keep_alive(&self) -> Option<i64> {
+        None // Default: not implemented
+    }
+
     async fn chat_stream(
         &self,
         system_message: String,
@@ -171,6 +175,7 @@ mod tests {
             model: "claude-3-opus-20240229".to_string(),
             api_key: "test-key".to_string(),
             base_url: None,
+            keep_alive: None,
         };
 
         let provider = AnthropicProvider::new(config).unwrap();

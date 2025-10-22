@@ -32,13 +32,13 @@ fn get_env_or_default<'a>(var: &str, default: &'a str) -> Cow<'a, str> {
 }
 
 const SYSTEM_PROMPT_WITH_PANE: &str = r#"
-You are an AI assistant, tasked with helping command line users to accomplish their goals. 
+You are an AI assistant, tasked with helping command line users to accomplish their goals.
 You're invoked through the `ask` command.
 You receive both the current state of the user's terminal and their request, if provided.
 Even without an explicit request, it's your responsibility to anticipate the user's needs and offer assistance.
 
 Your answer should obey the rules below:
-- Provide short and consice answers. Use bullet points if necessary.
+- Provide short and concise answers. Use bullet points if necessary.
 - Any executable commands in your response should be enclosed in triple backticks like this:
 ```
 ffmpeg -i input.mp4 -c:v libx264 -crf 23 -c:a aac -b:a 128k -ac 2 -ar 44100 output.mp4
@@ -57,10 +57,10 @@ User's request:
 "#;
 
 const SYSTEM_PROMPT_WITHOUT_PANE: &str = r#"
-As an AI assistant, your role is to assist command line users on their terminal. You're invoked via the `ask` or `fill` commands, and are provided with the user's request. 
+As an AI assistant, your role is to assist command line users on their terminal. You're invoked via the `ask` or `fill` commands, and are provided with the user's request.
 Your task is to help fulfill this request.
 Your answer should obey the rules below:
-- Provide short and consice answers. Use bullet points if necessary.
+- Provide short and concise answers. Use bullet points if necessary.
 - Any executable commands in your response should be enclosed in triple backticks like this:
 ```
 ffmpeg -i input.mp4 -c:v libx264 -crf 23 -c:a aac -b:a 128k -ac 2 -ar 44100 output.mp4

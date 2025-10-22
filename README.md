@@ -36,7 +36,7 @@ If you're on Zsh:
 zsh -c "$(curl -fsSL https://raw.githubusercontent.com/hmirin/ask.sh/main/install.sh)"
 ```
 
-Then, follow the instructions shown by the installer. 
+Then, follow the instructions shown by the installer.
 See [Setup](#setup) for manual installation.
 
 # Key Features
@@ -229,16 +229,19 @@ Optional, but highly recommended if you want `ask` command to work more nicely:
          - Set `ASK_SH_OPENAI_API_KEY` in your shell
          - You can get your API key from [OpenAI](https://platform.openai.com/account/api-keys)
          - Optional: Set `ASK_SH_OPENAI_BASE_URL` for custom OpenAI-compatible endpoints
-           - For Ollama: `ASK_SH_OPENAI_BASE_URL="http://localhost:11434/v1"`
            - For Deepseek: `ASK_SH_OPENAI_BASE_URL="https://api.deepseek.com"`
            - See [here](#which-llm-providers-are-supported) for details.
        - For Anthropic:
          - Set `ASK_SH_ANTHROPIC_API_KEY` in your shell
          - You can get your API key from [Anthropic](https://console.anthropic.com/account/keys)
          - Set `ASK_SH_LLM_PROVIDER=anthropic`
-    4. Optional: Configure model settings
-       - OpenAI: Set `ASK_SH_OPENAI_MODEL` (default: gpt-4o)
-       - Anthropic: Set `ASK_SH_ANTHROPIC_MODEL` (default: claude-3-opus-20240229)
+      - For Ollama native support:
+         - Set `ASK_SH_LLM_PROVIDER=ollama`
+         - Configure your Ollama instance URL with `ASK_SH_OLLAMA_BASE_URL="http://localhost:11434/api"`
+    4. Configure model settings
+       - Ollama: Set the model with `ASK_SH_OLLAMA_MODEL`
+       - OpenAI (Optional): Set `ASK_SH_OPENAI_MODEL` (default: gpt-4o)
+       - Anthropic (Optional): Set `ASK_SH_ANTHROPIC_MODEL` (default: claude-3-opus-20240229)
     5. If you don't want to use tmux or send your terminal outputs to the LLM provider, set `ASK_SH_NO_PANE=true`
         - If you don't set this variable when you query to `ask`, `ask` command will always recommend you to use tmux.
     6. Set up your shell environment
@@ -306,12 +309,16 @@ Similar projects:
   - Configure with `ASK_SH_OPENAI_MODEL` (default: gpt-4o)
     - Example: `ASK_SH_OPENAI_MODEL=gpt-4`
   - Custom Endpoints: You can use OpenAI-compatible APIs by setting `ASK_SH_OPENAI_BASE_URL`
-    - Ollama Example: `ASK_SH_OPENAI_BASE_URL="http://localhost:11434/v1" ASK_SH_OPENAI_MODEL="deepseek-r1:8b" ask who are you`
     - DeepSeek Example: `ASK_SH_OPENAI_BASE_URL="https://api.deepseek.com" ASK_SH_OPENAI_MODEL="deepseek-chat" ASK_SH_OPENAI_API_KEY=xxx ask who are you`
 - Anthropic
   - Models: Claude-3 and other Claude models
   - Configure with `ASK_SH_ANTHROPIC_MODEL` (default: claude-3-5-opus-latest)
   - Example: `ASK_SH_LLM_PROVIDER=anthropic ASK_SH_ANTHROPIC_MODEL=claude-3-opus-20240229`
+- Ollama
+  - Configure your base url using `ASK_SH_OLLAMA_BASE_URL`
+  - Set the model with `ASK_SH_OLLAMA_MODEL`
+  - You can optionally set a keep alive model so that the model doesn't unload after a given time with `ASK_SH_OLLAMA_KEEP_ALIVE`. Use a value of `-1` to keep it loaded until another model is requested.
+  - Example: `ASK_SH_LLM_PROVIDER="ollama" ASK_SH_OLLAMA_BASE_URL="http://localhost:11434/api" ASK_SH_OLLAMA_MODEL="qwen3-coder:30b"`
 
 To switch providers, set `ASK_SH_LLM_PROVIDER` to either `openai` or `anthropic`. Don't forget to set the corresponding API key:
 - OpenAI: `ASK_SH_OPENAI_API_KEY`

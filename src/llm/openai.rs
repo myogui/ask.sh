@@ -46,6 +46,10 @@ impl LLMProvider for OpenAIProvider {
         &self.model
     }
 
+    fn keep_alive(&self) -> Option<i64> {
+        None // Default: not implemented
+    }
+
     async fn chat_stream(
         &self,
         system_message: String,
@@ -106,6 +110,7 @@ mod tests {
             model: "gpt-3.5-turbo".to_string(),
             api_key: "test-key".to_string(),
             base_url: None,
+            keep_alive: None,
         };
 
         let provider = OpenAIProvider::new(config).unwrap();

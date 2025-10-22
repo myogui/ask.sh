@@ -25,7 +25,8 @@ pub struct LLMConfig {
     pub provider: String,
     pub model: String,
     pub api_key: String,
-    pub base_url: Option<String>, // Custom endpoint URL (for OpenAI)
+    pub base_url: Option<String>, // Custom endpoint URL (for OpenAI and Ollama)
+    pub keep_alive: Option<i64>,  // Amount of minutes to keep the model loaded (Ollama only)
 }
 
 impl Default for LLMConfig {
@@ -35,6 +36,7 @@ impl Default for LLMConfig {
             model: String::new(),
             api_key: String::new(),
             base_url: None,
+            keep_alive: None,
         }
     }
 }
@@ -51,6 +53,8 @@ pub trait LLMProvider: Send + Sync + Debug {
     /// Returns the current model name
     fn model(&self) -> &str;
 
+    fn keep_alive(&self) -> Option<i64>;
+
     /// Get chat completion as a stream
     async fn chat_stream(
         &self,
@@ -60,6 +64,7 @@ pub trait LLMProvider: Send + Sync + Debug {
 }
 
 pub mod anthropic;
+pub mod ollama;
 pub mod openai;
 
 /// Available LLM providers
@@ -67,6 +72,7 @@ pub mod openai;
 pub enum Provider {
     OpenAI(openai::OpenAIProvider),
     Anthropic(anthropic::AnthropicProvider),
+    Ollama(ollama::OllamaProvider),
 }
 
 #[async_trait]
@@ -75,6 +81,7 @@ impl LLMProvider for Provider {
         match self {
             Provider::OpenAI(p) => p.name(),
             Provider::Anthropic(p) => p.name(),
+            Provider::Ollama(p) => p.name(),
         }
     }
 
@@ -82,6 +89,15 @@ impl LLMProvider for Provider {
         match self {
             Provider::OpenAI(p) => p.model(),
             Provider::Anthropic(p) => p.model(),
+            Provider::Ollama(p) => p.model(),
+        }
+    }
+
+    fn keep_alive(&self) -> Option<i64> {
+        match self {
+            Provider::OpenAI(p) => p.keep_alive(),
+            Provider::Anthropic(p) => p.keep_alive(),
+            Provider::Ollama(p) => p.keep_alive(),
         }
     }
 
@@ -93,6 +109,7 @@ impl LLMProvider for Provider {
         match self {
             Provider::OpenAI(p) => p.chat_stream(system_message, user_message).await,
             Provider::Anthropic(p) => p.chat_stream(system_message, user_message).await,
+            Provider::Ollama(p) => p.chat_stream(system_message, user_message).await,
         }
     }
 }
@@ -104,6 +121,7 @@ pub fn create_provider(config: LLMConfig) -> Result<Provider, LLMError> {
         "anthropic" => Ok(Provider::Anthropic(anthropic::AnthropicProvider::new(
             config,
         )?)),
+        "ollama" => Ok(Provider::Ollama(ollama::OllamaProvider::new(config)?)),
         _ => Err(LLMError::ConfigError(format!(
             "Unknown provider: {}",
             config.provider

@@ -46,6 +46,9 @@ const ENV_OPENAI_MODEL: &str = "ASK_SH_OPENAI_MODEL";
 const ENV_OPENAI_BASE_URL: &str = "ASK_SH_OPENAI_BASE_URL";
 const ENV_ANTHROPIC_API_KEY: &str = "ASK_SH_ANTHROPIC_API_KEY";
 const ENV_ANTHROPIC_MODEL: &str = "ASK_SH_ANTHROPIC_MODEL";
+const ENV_OLLAMA_BASE_URL: &str = "ASK_SH_OLLAMA_BASE_URL";
+const ENV_OLLAMA_MODEL: &str = "ASK_SH_OLLAMA_MODEL";
+const ENV_OLLAMA_KEEP_ALIVE: &str = "ASK_SH_OLLAMA_KEEP_ALIVE";
 
 fn get_llm_config() -> Result<LLMConfig, LLMError> {
     dotenv().ok();
@@ -67,6 +70,7 @@ fn get_llm_config() -> Result<LLMConfig, LLMError> {
                 api_key,
                 model,
                 base_url,
+                keep_alive: None,
             })
         }
         "anthropic" => {
@@ -81,6 +85,26 @@ fn get_llm_config() -> Result<LLMConfig, LLMError> {
                 api_key,
                 model,
                 base_url: None, // Anthropic does not support custom endpoints
+                keep_alive: None,
+            })
+        }
+        "ollama" => {
+            let api_key = "ollama dummy key".to_string();
+
+            let model = env::var(ENV_OLLAMA_MODEL).unwrap_or_else(|_| "gemma3:4b".to_string());
+
+            let base_url = env::var(ENV_OLLAMA_BASE_URL).ok();
+
+            let keep_alive: Option<i64> = env::var(ENV_OLLAMA_KEEP_ALIVE)
+                .ok()
+                .and_then(|s| s.parse().ok());
+
+            Ok(LLMConfig {
+                provider,
+                api_key,
+                model,
+                base_url,
+                keep_alive,
             })
         }
         _ => Err(LLMError::ConfigError(format!(
