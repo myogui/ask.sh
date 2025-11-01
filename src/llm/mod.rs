@@ -107,7 +107,7 @@ impl LLMProvider for Provider {
 }
 
 /// Provider factory
-pub fn create_provider(config: LLMConfig) -> Result<Provider, LLMError> {
+pub fn create_llm_provider(config: LLMConfig) -> Result<Provider, LLMError> {
     match config.provider.as_str() {
         "openai" => Ok(Provider::OpenAI(openai::OpenAIProvider::new(config)?)),
         "anthropic" => Ok(Provider::Anthropic(anthropic::AnthropicProvider::new(

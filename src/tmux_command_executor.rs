@@ -4,6 +4,8 @@ use std::{env, thread};
 
 use uuid::Uuid;
 
+const TMUX_SESSION_NAME: &str = "ask_sh_session";
+
 pub struct TmuxCommandExecutor {
     session: String,
     prompt_pattern: String,
@@ -11,10 +13,10 @@ pub struct TmuxCommandExecutor {
 
 impl TmuxCommandExecutor {
     // Create a new TmuxCommandExecutor for a specific pane
-    pub fn new(session: &str) -> Self {
+    pub fn new() -> Self {
         let executor = Self {
-            session: session.to_string(),
-            prompt_pattern: Self::capture_prompt_pattern(&session.to_string()),
+            session: TMUX_SESSION_NAME.to_string(),
+            prompt_pattern: Self::capture_prompt_pattern(TMUX_SESSION_NAME),
         };
 
         // Create the session
@@ -114,6 +116,14 @@ impl TmuxCommandExecutor {
         let cleaned = self.clean_command_output(&content, &marker);
 
         Ok(cleaned.to_string())
+    }
+
+    pub fn terminate_session(&self) {
+        Command::new("tmux")
+            .arg("kill-session")
+            .arg("-a")
+            .arg("-t")
+            .arg(&self.session);
     }
 
     fn capture_prompt_pattern(pane: &str) -> String {
