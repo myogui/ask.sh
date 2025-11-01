@@ -21,6 +21,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 async-trait = "0.1"
 pin-project = "1.0"
+dotenvy = "0.15.7"
+uuid = { version = "1.18.1", features = ["v4"] }
 
 [[bin]]
 name = "ask-sh"
