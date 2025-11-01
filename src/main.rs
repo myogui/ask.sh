@@ -8,36 +8,28 @@ use std::{
     },
     error::Error,
     io::{self, BufRead},
-    process,
+    process::{self, Command},
 };
 
 mod llm;
 mod prompts;
+mod tmux_command_executor;
 
 use llm::{create_provider, LLMConfig, LLMError, LLMProvider};
+use tmux_command_executor::TmuxCommandExecutor;
 
 // args
 const ARG_DEBUG: &str = "--debug_ask_sh";
-const ARG_NO_PANE: &str = "--no_pane";
-const ARG_NO_SUGGEST: &str = "--no_suggest";
 const ARG_VERSION: &str = "--version";
 const ARG_VERSION_SHORT: &str = "-v";
 
-const ARG_STRINGS: &[&str] = &[
-    ARG_DEBUG,
-    ARG_NO_PANE,
-    ARG_NO_SUGGEST,
-    ARG_VERSION,
-    ARG_VERSION_SHORT,
-];
+const ARG_STRINGS: &[&str] = &[ARG_DEBUG, ARG_VERSION, ARG_VERSION_SHORT];
 
 // special arg
 const ARG_INIT: &str = "--init";
 
 // env
 const ENV_DEBUG: &str = "ASK_SH_DEBUG";
-const ENV_NO_PANE: &str = "ASK_SH_NO_PANE";
-const ENV_NO_SUGGEST: &str = "ASK_SH_NO_SUGGEST";
 
 // LLM provider settings
 const ENV_LLM_PROVIDER: &str = "ASK_SH_LLM_PROVIDER";
@@ -51,8 +43,6 @@ const ENV_OLLAMA_MODEL: &str = "ASK_SH_OLLAMA_MODEL";
 const ENV_OLLAMA_KEEP_ALIVE: &str = "ASK_SH_OLLAMA_KEEP_ALIVE";
 
 fn get_llm_config() -> Result<LLMConfig, LLMError> {
-    dotenv().ok();
-
     // Select provider (default is OpenAI)
     let provider = env::var(ENV_LLM_PROVIDER).unwrap_or_else(|_| "openai".to_string());
 
@@ -158,7 +148,7 @@ async fn chat(
     Ok(response_to_return)
 }
 
-fn post_process(text: &str) -> Vec<String> {
+fn get_commands_to_run(text: &str) -> Vec<String> {
     let mut commands = Vec::new();
     // extract all commands enclosed in ``` ```
     let re = Regex::new(r#"```(.+?)```"#).unwrap();
@@ -179,6 +169,8 @@ fn post_process(text: &str) -> Vec<String> {
         .map(|command| {
             if command.starts_with("bash;") {
                 command.trim_start_matches("bash;").trim().to_owned()
+            } else if command.starts_with("zsh;") {
+                command.trim_start_matches("zsh;").trim().to_owned()
             } else if command.starts_with("sh;") {
                 command.trim_start_matches("sh;").trim().to_owned()
             } else {
@@ -187,13 +179,13 @@ fn post_process(text: &str) -> Vec<String> {
         })
         .collect();
     // deduplicate with keeping the order
-    // count the number of occurences of each command
+    // count the number of occurrence of each command
     let mut counts = std::collections::HashMap::new();
     for command in &commands {
         let count = counts.entry(command).or_insert(0);
         *count += 1;
     }
-    // add only the first occurence of each command to deduped_commands
+    // add only the first occurrence of each command to deduped_commands
     // TODO: not elegant
     let mut deduped_commands: Vec<String> = Vec::new();
     for command in &commands {
@@ -273,7 +265,26 @@ ask() {{
     );
 }
 
+fn create_box(text: &str, stats: &str) -> String {
+    let padding = 5; // For "│ ✓  " prefix
+    let max_width = text.len().max(stats.len()) + padding + 3;
+
+    let top_line = format!("╭{}╮", "─".repeat(max_width));
+    let bottom_line = format!("╰{}╯", "─".repeat(max_width));
+
+    format!(
+        "{}\n│ ✓  {:<width$} │\n│    {:<width$} │\n{}",
+        top_line,
+        text,
+        stats,
+        bottom_line,
+        width = max_width - padding
+    )
+}
+
 fn main() {
+    dotenv().ok();
+
     // if called with only --init, the command emits a shell script to be sourced
     if env::args().len() == 2 && env::args().nth(1).unwrap() == ARG_INIT {
         print_init_script();
@@ -312,56 +323,6 @@ fn main() {
     let debug_mode = env::args()
         .any(|arg| arg == ARG_DEBUG || user_input.contains(ARG_DEBUG) || get_env_flag(ENV_DEBUG));
 
-    // send_pane is false if args contains --no_pane or stdin text contains "--no_pane" or env var ASK_SH_NO_PANE is defined
-    // send_pane is immutable in case tmux capture-pane -p fails
-    let mut send_pane = !env::args().any(|arg| arg == ARG_NO_PANE)
-        && !user_input.contains(ARG_NO_PANE)
-        && !get_env_flag(ENV_NO_PANE);
-
-    // no_suggest is true if args contains --no_suggest or stdin text contains "--no_suggest" or env var ASK_SH_NO_SUGGEST is defined
-    let no_suggest = env::args().any(|arg| arg == ARG_NO_SUGGEST)
-        || user_input.contains(ARG_NO_SUGGEST)
-        || get_env_flag(ENV_NO_SUGGEST);
-
-    // run tmux capture-pane -p before anything is printed.
-    // if run with no_pane, pane_text is empty string.
-    // if run without no_pane, execute shell command tmux capture-pane -p, when the command fail, pane_text return empty string
-    // when fail, print error message to stderr
-    let mut pane_text: String = "".to_string();
-    if send_pane {
-        {
-            // check if in tmux session
-            let mut in_tmux = false;
-            match env::var("TMUX") {
-                Ok(_value) => in_tmux = true,
-                Err(_e) => {
-                    eprintln!("*** Note: Terminal output is not sent to AI. Run this command inside tmux to enable the feature. See https://github.com/hmirin/ask.sh/blob/master/README.md#qa for more information. If you no longer want to see this message, run `ask` with --no_pane option or set ASK_SH_NO_PANE=true. ***\n")
-                }
-            }
-            if in_tmux {
-                match std::process::Command::new("tmux")
-                    .arg("capture-pane")
-                    .arg("-p")
-                    .output()
-                {
-                    Ok(output) => pane_text = String::from_utf8_lossy(&output.stdout).to_string(),
-                    Err(e) => {
-                        eprintln!("Somehow tmux capture-pane -p failed: {}", e);
-                    }
-                }
-            }
-        }
-    };
-    // remove last empty lines from pane_text
-    let mut pane_text = pane_text.trim_end().to_string();
-    // remove last line of pane_text
-    if !pane_text.is_empty() {
-        let pane_text_lines: Vec<&str> = pane_text.split('\n').collect();
-        let mut pane_text_lines = pane_text_lines;
-        pane_text_lines.pop();
-        pane_text = pane_text_lines.join("\n");
-    }
-
     // get user's shell name
     // when env::var("SHELL") is not set, use BASH_VERSION or ZSH_VERSION to guess the shell
     let shell = match env::var("SHELL") {
@@ -390,42 +351,23 @@ fn main() {
         shell,
     };
 
-    // disable send_pane if pane_text is not empty
-    if pane_text.is_empty() && send_pane {
-        if debug_mode {
-            eprintln!("pane_text is empty, so I set no_pane to true");
-        }
-        send_pane = false;
-    }
     if debug_mode {
         eprintln!("args: {}", args.join(" "));
         eprintln!("is_using_stdin: {}", is_using_stdin);
         eprintln!("user_input: {}", user_input);
         eprintln!("user_input_without_flags: {}", user_input_without_flags);
         eprintln!("debug_mode: {}", debug_mode);
-        eprintln!("no_suggest: {}", no_suggest);
-        eprintln!("pane_text: {}", pane_text);
     }
 
     let templates = prompts::get_template();
     let mut vars = std::collections::HashMap::new();
-    vars.insert("pane_text".to_owned(), pane_text.to_owned());
     vars.insert("user_input".to_owned(), user_input_without_flags.to_owned());
     vars.insert("user_os".to_owned(), user_info.os.to_owned());
     vars.insert("user_arch".to_owned(), user_info.arch.to_owned());
     vars.insert("user_shell".to_owned(), user_info.shell.to_owned());
-    let system_message = if send_pane {
-        templates.render("SYSTEM_PROMPT_WITH_PANE", &vars).unwrap()
-    } else {
-        templates
-            .render("SYSTEM_PROMPT_WITHOUT_PANE", &vars)
-            .unwrap()
-    };
-    let user_input = if send_pane {
-        templates.render("USER_PROMPT_WITH_PANE", &vars).unwrap()
-    } else {
-        templates.render("USER_PROMPT_WITHOUT_PANE", &vars).unwrap()
-    };
+
+    let system_message = templates.render("SYSTEM_PROMPT", &vars).unwrap();
+    let user_input = templates.render("USER_PROMPT", &vars).unwrap();
 
     let response = chat(user_input, system_message, &debug_mode);
 
@@ -437,12 +379,32 @@ fn main() {
         }
     };
 
-    let commands = post_process(&response);
+    let tmux_session_name = "ask_sh_session";
+
+    // Create executor for a specific tmux pane
+    let tmux_executor = TmuxCommandExecutor::new(&tmux_session_name);
+    let commands = get_commands_to_run(&response);
 
     // print suggested commands to stdout to further process
-    if !no_suggest {
-        for command in commands {
-            println!("{}", command);
+    for command in commands {
+        println!("");
+        println!("I'll run the following command:");
+        println!("{}", create_box(&command, ""));
+
+        let command_output = tmux_executor.execute_command(&command);
+        println!("The command returned: {}", command_output.unwrap());
+    }
+
+    match Command::new("tmux")
+        .arg("kill-session")
+        .arg("-a")
+        .arg("-t")
+        .arg(&tmux_session_name)
+        .output()
+    {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Somehow tmux capture-pane -p failed: {}", e);
         }
     }
 }
