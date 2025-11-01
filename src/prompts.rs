@@ -13,6 +13,10 @@ static PROMPTS: Lazy<Vec<(String, String)>> = Lazy::new(|| {
             "USER_PROMPT".to_string(),
             get_env_or_default("USER_PROMPT", USER_PROMPT).into_owned(),
         ),
+        (
+            "TERMINAL_OUTPUT_PROMPT".to_string(),
+            get_env_or_default("TERMINAL_OUTPUT_PROMPT", TERMINAL_OUTPUT_PROMPT).into_owned(),
+        ),
     ]
 });
 
@@ -51,12 +55,10 @@ User's request:
 {user_input}
 "#;
 
-// const USER_PROMPT_WITH_TERMINAL_STATE: &str = r#"
-// Terminal state:
-// {terminal_text}
-// User's request:
-// {user_input}
-// "#;
+const TERMINAL_OUTPUT_PROMPT: &str = r#"
+Terminal state:
+{terminal_text}
+"#;
 
 pub fn get_template() -> TinyTemplate<'static> {
     let mut templates = TinyTemplate::new();

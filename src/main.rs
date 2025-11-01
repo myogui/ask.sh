@@ -1,12 +1,10 @@
 use dotenv::dotenv;
-use futures::stream::StreamExt;
 use regex::Regex;
 use std::{
     env::{
         self,
         consts::{ARCH, OS},
     },
-    error::Error,
     io::{self, BufRead},
     process::{self, Command},
 };
@@ -117,38 +115,6 @@ struct UserInfo {
     os: String,
     shell: String,
     // TODO: add distro info if linux
-}
-
-/// Chat with LLM provider
-#[tokio::main]
-async fn chat(
-    user_input: String,
-    system_message: String,
-    _debug_mode: &bool, // currently unused
-) -> Result<String, Box<dyn Error>> {
-    let config = get_llm_config().map_err(|e| Box::new(e) as Box<dyn Error>)?;
-    let mut provider = create_provider(config).map_err(|e| Box::new(e) as Box<dyn Error>)?;
-
-    provider.with_system_prompt(&system_message);
-
-    let mut stream = provider
-        .chat_stream(user_input)
-        .await
-        .map_err(|e| Box::new(e) as Box<dyn Error>)?;
-
-    let mut response_to_return = String::new();
-    while let Some(result) = stream.next().await {
-        match result {
-            Ok(content) => {
-                response_to_return.push_str(&content);
-                eprint!("{}", content);
-            }
-            Err(err) => {
-                eprint!("{}", err);
-            }
-        }
-    }
-    Ok(response_to_return)
 }
 
 fn get_commands_to_run(text: &str) -> Vec<String> {
@@ -268,24 +234,24 @@ ask() {{
     );
 }
 
-fn create_box(text: &str, stats: &str) -> String {
+fn create_box(text: &str) -> String {
     let padding = 5; // For "│ ✓  " prefix
-    let max_width = text.len().max(stats.len()) + padding + 3;
+    let max_width = text.len() + padding + 3;
 
     let top_line = format!("╭{}╮", "─".repeat(max_width));
     let bottom_line = format!("╰{}╯", "─".repeat(max_width));
 
     format!(
-        "{}\n│ ✓  {:<width$} │\n│    {:<width$} │\n{}",
+        "{}\n│ ✓  {:<width$} │\n{}",
         top_line,
         text,
-        stats,
         bottom_line,
         width = max_width - padding
     )
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     dotenv().ok();
 
     // if called with only --init, the command emits a shell script to be sourced
@@ -369,10 +335,14 @@ fn main() {
     vars.insert("user_arch".to_owned(), user_info.arch.to_owned());
     vars.insert("user_shell".to_owned(), user_info.shell.to_owned());
 
+    let config = get_llm_config().unwrap();
+    let mut provider = create_provider(config).unwrap();
     let system_message = templates.render("SYSTEM_PROMPT", &vars).unwrap();
+    provider.with_system_prompt(&system_message);
+
     let user_input = templates.render("USER_PROMPT", &vars).unwrap();
 
-    let response = chat(user_input, system_message, &debug_mode);
+    let response = provider.chat(user_input).await;
 
     let response = match response {
         Ok(val) => val,
@@ -393,11 +363,26 @@ fn main() {
         println!("");
         println!("I'll run the following command:");
         println!("");
-        println!("{}", create_box(&command, ""));
+        println!("{}", create_box(&command));
         println!("");
 
-        let command_output = tmux_executor.execute_command(&command);
-        println!("The command returned: {}", command_output.unwrap());
+        let command_output = tmux_executor.execute_command(&command).unwrap();
+        // println!("The command returned: {}", command_output.unwrap());
+        //
+        //
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("terminal_text".to_owned(), command_output.to_owned());
+        let user_input = templates.render("TERMINAL_OUTPUT_PROMPT", &vars).unwrap();
+
+        let response = provider.chat(user_input).await;
+
+        let response = match response {
+            Ok(val) => val,
+            Err(e) => {
+                eprintln!("Communication with LLM provider failed: {}", e);
+                process::exit(1);
+            }
+        };
     }
 
     match Command::new("tmux")

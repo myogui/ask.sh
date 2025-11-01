@@ -1,6 +1,7 @@
 use async_trait::async_trait;
+use futures::stream::StreamExt;
 use futures::Stream;
-use std::{fmt::Debug, pin::Pin};
+use std::{error::Error, fmt::Debug, pin::Pin};
 use thiserror::Error;
 
 /// Error from LLM provider
@@ -51,6 +52,27 @@ pub trait LLMProvider: Send + Sync + Debug {
 
     /// Get chat completion as a stream
     async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError>;
+
+    async fn chat(&mut self, user_input: String) -> Result<String, Box<dyn Error>> {
+        let mut stream = self
+            .chat_stream(user_input)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn Error>)?;
+
+        let mut response_to_return = String::new();
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(content) => {
+                    response_to_return.push_str(&content);
+                    eprint!("{}", content);
+                }
+                Err(err) => {
+                    eprint!("{}", err);
+                }
+            }
+        }
+        Ok(response_to_return)
+    }
 }
 
 pub mod anthropic;
