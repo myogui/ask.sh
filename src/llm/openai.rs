@@ -1,8 +1,8 @@
 use async_openai::{
     config::OpenAIConfig,
     types::{
-        ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
-        CreateChatCompletionRequestArgs,
+        ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
+        ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs,
     },
     Client,
 };
@@ -16,6 +16,7 @@ use super::{ChatStream, LLMConfig, LLMError, LLMProvider};
 pub struct OpenAIProvider {
     client: Client<OpenAIConfig>,
     model: String,
+    conversation_history: Vec<ChatCompletionRequestMessage>,
 }
 
 impl OpenAIProvider {
@@ -32,31 +33,37 @@ impl OpenAIProvider {
         Ok(Self {
             client,
             model: config.model,
+            conversation_history: Vec::new(),
         })
     }
 }
 
 #[async_trait]
 impl LLMProvider for OpenAIProvider {
-    async fn chat_stream(
-        &self,
-        system_message: String,
-        user_message: String,
-    ) -> Result<ChatStream, LLMError> {
+    /// Add a system message at the start of the conversation
+    fn with_system_prompt(&mut self, prompt: &str) {
+        let message = ChatCompletionRequestSystemMessageArgs::default()
+            .content(prompt)
+            .build()
+            .expect("Failed to build system message")
+            .into();
+
+        self.conversation_history.push(message);
+    }
+
+    async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError> {
+        // Add user message to history
+        self.conversation_history.push(
+            ChatCompletionRequestUserMessageArgs::default()
+                .content(user_message.as_str())
+                .build()
+                .map_err(|e| LLMError::InvalidRequestError(e.to_string()))?
+                .into(),
+        );
+
         let request = CreateChatCompletionRequestArgs::default()
             .model(&self.model)
-            .messages([
-                ChatCompletionRequestSystemMessageArgs::default()
-                    .content(system_message.as_str())
-                    .build()
-                    .map_err(|e| LLMError::InvalidRequestError(e.to_string()))?
-                    .into(),
-                ChatCompletionRequestUserMessageArgs::default()
-                    .content(user_message.as_str())
-                    .build()
-                    .map_err(|e| LLMError::InvalidRequestError(e.to_string()))?
-                    .into(),
-            ])
+            .messages(self.conversation_history.clone())
             .build()
             .map_err(|e| LLMError::InvalidRequestError(e.to_string()))?;
 

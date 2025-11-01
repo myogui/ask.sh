@@ -13,18 +13,18 @@ pub struct AnthropicProvider {
     client: Client,
     model: String,
     api_key: String,
+    conversation_history: Vec<Message>,
 }
 
 #[derive(Serialize, Debug)]
 struct AnthropicRequest {
     model: String,
-    system: String,
     messages: Vec<Message>,
     stream: bool,
     max_tokens: u32,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 struct Message {
     role: String,
     content: String,
@@ -52,20 +52,8 @@ impl AnthropicProvider {
             client,
             model: config.model,
             api_key: config.api_key,
+            conversation_history: Vec::new(),
         })
-    }
-
-    fn create_request(&self, system_message: &str, user_message: &str) -> AnthropicRequest {
-        AnthropicRequest {
-            model: self.model.clone(),
-            system: system_message.to_string(),
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: user_message.to_string(),
-            }],
-            stream: true,
-            max_tokens: 4096,
-        }
     }
 
     fn parse_sse_line(line: &str) -> Option<String> {
@@ -92,12 +80,27 @@ impl AnthropicProvider {
 
 #[async_trait]
 impl LLMProvider for AnthropicProvider {
-    async fn chat_stream(
-        &self,
-        system_message: String,
-        user_message: String,
-    ) -> Result<ChatStream, LLMError> {
-        let request = self.create_request(&system_message, &user_message);
+    /// Add a system message at the start of the conversation
+    fn with_system_prompt(&mut self, prompt: &str) {
+        self.conversation_history.push(Message {
+            role: "system".to_string(),
+            content: prompt.to_string(),
+        });
+    }
+
+    async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError> {
+        // Add user message to history
+        self.conversation_history.push(Message {
+            role: "user".to_string(),
+            content: user_message.to_string(),
+        });
+
+        let request = AnthropicRequest {
+            model: self.model.clone(),
+            messages: self.conversation_history.clone(),
+            stream: true,
+            max_tokens: 4096,
+        };
 
         let response = self
             .client

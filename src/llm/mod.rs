@@ -47,12 +47,10 @@ pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send
 /// Trait for LLM provider
 #[async_trait]
 pub trait LLMProvider: Send + Sync + Debug {
+    fn with_system_prompt(&mut self, prompt: &str);
+
     /// Get chat completion as a stream
-    async fn chat_stream(
-        &self,
-        system_message: String,
-        user_message: String,
-    ) -> Result<ChatStream, LLMError>;
+    async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError>;
 }
 
 pub mod anthropic;
@@ -69,15 +67,19 @@ pub enum Provider {
 
 #[async_trait]
 impl LLMProvider for Provider {
-    async fn chat_stream(
-        &self,
-        system_message: String,
-        user_message: String,
-    ) -> Result<ChatStream, LLMError> {
+    fn with_system_prompt(&mut self, prompt: &str) {
         match self {
-            Provider::OpenAI(p) => p.chat_stream(system_message, user_message).await,
-            Provider::Anthropic(p) => p.chat_stream(system_message, user_message).await,
-            Provider::Ollama(p) => p.chat_stream(system_message, user_message).await,
+            Provider::OpenAI(p) => p.with_system_prompt(prompt),
+            Provider::Anthropic(p) => p.with_system_prompt(prompt),
+            Provider::Ollama(p) => p.with_system_prompt(prompt),
+        }
+    }
+
+    async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError> {
+        match self {
+            Provider::OpenAI(p) => p.chat_stream(user_message).await,
+            Provider::Anthropic(p) => p.chat_stream(user_message).await,
+            Provider::Ollama(p) => p.chat_stream(user_message).await,
         }
     }
 }

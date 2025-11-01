@@ -14,7 +14,7 @@ struct OllamaRequest {
     keep_alive: Option<i64>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct Message {
     role: String,
     content: String,
@@ -33,6 +33,7 @@ pub struct OllamaProvider {
     base_url: String,
     model: String,
     keep_alive: Option<i64>,
+    conversation_history: Vec<Message>,
 }
 
 impl OllamaProvider {
@@ -46,33 +47,35 @@ impl OllamaProvider {
             base_url,
             model: config.model,
             keep_alive: config.keep_alive,
+            conversation_history: Vec::new(),
         })
     }
 }
 
 #[async_trait]
 impl LLMProvider for OllamaProvider {
-    async fn chat_stream(
-        &self,
-        system_message: String,
-        user_message: String,
-    ) -> Result<ChatStream, LLMError> {
+    /// Add a system message at the start of the conversation
+    fn with_system_prompt(&mut self, prompt: &str) {
+        self.conversation_history.push(Message {
+            role: "system".to_string(),
+            content: prompt.to_string(),
+        });
+    }
+
+    async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError> {
         // Use Ollama's native endpoint
         let url = format!("{}/chat", self.base_url);
+
+        // Add user message to history
+        self.conversation_history.push(Message {
+            role: "user".to_string(),
+            content: user_message.to_string(),
+        });
 
         let request = OllamaRequest {
             model: self.model.clone(),
             keep_alive: self.keep_alive.clone(),
-            messages: vec![
-                Message {
-                    role: "system".to_string(),
-                    content: system_message,
-                },
-                Message {
-                    role: "user".to_string(),
-                    content: user_message,
-                },
-            ],
+            messages: self.conversation_history.clone(),
             stream: true,
         };
 

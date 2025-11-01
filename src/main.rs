@@ -127,9 +127,12 @@ async fn chat(
     _debug_mode: &bool, // currently unused
 ) -> Result<String, Box<dyn Error>> {
     let config = get_llm_config().map_err(|e| Box::new(e) as Box<dyn Error>)?;
-    let provider = create_provider(config).map_err(|e| Box::new(e) as Box<dyn Error>)?;
+    let mut provider = create_provider(config).map_err(|e| Box::new(e) as Box<dyn Error>)?;
 
-    let mut stream = LLMProvider::chat_stream(&provider, system_message, user_input)
+    provider.with_system_prompt(&system_message);
+
+    let mut stream = provider
+        .chat_stream(user_input)
         .await
         .map_err(|e| Box::new(e) as Box<dyn Error>)?;
 
@@ -389,7 +392,9 @@ fn main() {
     for command in commands {
         println!("");
         println!("I'll run the following command:");
+        println!("");
         println!("{}", create_box(&command, ""));
+        println!("");
 
         let command_output = tmux_executor.execute_command(&command);
         println!("The command returned: {}", command_output.unwrap());

@@ -171,7 +171,7 @@ impl TmuxCommandExecutor {
 
     /// Ensure the tmux session exists
     fn ensure_session(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut in_tmux = false;
+        let in_tmux: bool;
 
         match env::var("TMUX") {
             Ok(_value) => in_tmux = true,
