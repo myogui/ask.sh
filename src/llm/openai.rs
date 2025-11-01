@@ -38,18 +38,6 @@ impl OpenAIProvider {
 
 #[async_trait]
 impl LLMProvider for OpenAIProvider {
-    fn name(&self) -> &'static str {
-        "openai"
-    }
-
-    fn model(&self) -> &str {
-        &self.model
-    }
-
-    fn keep_alive(&self) -> Option<i64> {
-        None // Default: not implemented
-    }
-
     async fn chat_stream(
         &self,
         system_message: String,
@@ -114,7 +102,6 @@ mod tests {
         };
 
         let provider = OpenAIProvider::new(config).unwrap();
-        assert_eq!(provider.name(), "openai");
-        assert_eq!(provider.model(), "gpt-3.5-turbo");
+        assert_eq!(provider.model, "gpt-3.5-turbo");
     }
 }

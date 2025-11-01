@@ -52,18 +52,6 @@ impl OllamaProvider {
 
 #[async_trait]
 impl LLMProvider for OllamaProvider {
-    fn name(&self) -> &'static str {
-        "ollama"
-    }
-
-    fn model(&self) -> &str {
-        &self.model
-    }
-
-    fn keep_alive(&self) -> Option<i64> {
-        self.keep_alive
-    }
-
     async fn chat_stream(
         &self,
         system_message: String,
@@ -158,7 +146,6 @@ mod tests {
         };
 
         let provider = OllamaProvider::new(config).unwrap();
-        assert_eq!(provider.name(), "ollama");
-        assert_eq!(provider.model(), "gemma3");
+        assert_eq!(provider.model, "gemma3");
     }
 }

@@ -1,7 +1,9 @@
 /target/
 *.rs.bk
 .envrc
+.env
 
 *.log
 
 .DS_Store
+.zed/

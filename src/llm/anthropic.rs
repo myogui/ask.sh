@@ -92,18 +92,6 @@ impl AnthropicProvider {
 
 #[async_trait]
 impl LLMProvider for AnthropicProvider {
-    fn name(&self) -> &'static str {
-        "anthropic"
-    }
-
-    fn model(&self) -> &str {
-        &self.model
-    }
-
-    fn keep_alive(&self) -> Option<i64> {
-        None // Default: not implemented
-    }
-
     async fn chat_stream(
         &self,
         system_message: String,
@@ -179,7 +167,6 @@ mod tests {
         };
 
         let provider = AnthropicProvider::new(config).unwrap();
-        assert_eq!(provider.name(), "anthropic");
-        assert_eq!(provider.model(), "claude-3-opus-20240229");
+        assert_eq!(provider.model, "claude-3-opus-20240229");
     }
 }

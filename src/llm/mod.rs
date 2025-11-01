@@ -47,14 +47,6 @@ pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send
 /// Trait for LLM provider
 #[async_trait]
 pub trait LLMProvider: Send + Sync + Debug {
-    /// Returns the provider name
-    fn name(&self) -> &'static str;
-
-    /// Returns the current model name
-    fn model(&self) -> &str;
-
-    fn keep_alive(&self) -> Option<i64>;
-
     /// Get chat completion as a stream
     async fn chat_stream(
         &self,
@@ -77,30 +69,6 @@ pub enum Provider {
 
 #[async_trait]
 impl LLMProvider for Provider {
-    fn name(&self) -> &'static str {
-        match self {
-            Provider::OpenAI(p) => p.name(),
-            Provider::Anthropic(p) => p.name(),
-            Provider::Ollama(p) => p.name(),
-        }
-    }
-
-    fn model(&self) -> &str {
-        match self {
-            Provider::OpenAI(p) => p.model(),
-            Provider::Anthropic(p) => p.model(),
-            Provider::Ollama(p) => p.model(),
-        }
-    }
-
-    fn keep_alive(&self) -> Option<i64> {
-        match self {
-            Provider::OpenAI(p) => p.keep_alive(),
-            Provider::Anthropic(p) => p.keep_alive(),
-            Provider::Ollama(p) => p.keep_alive(),
-        }
-    }
-
     async fn chat_stream(
         &self,
         system_message: String,
