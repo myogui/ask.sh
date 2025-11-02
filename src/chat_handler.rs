@@ -1,9 +1,10 @@
+use async_recursion::async_recursion;
 use std::process;
 
 use regex::Regex;
 
 use crate::{
-    llm::{create_llm_provider, LLMConfig, LLMProvider},
+    llm::{create_llm_provider, LLMConfig, LLMProvider, Provider},
     prompts,
     tmux_command_executor::TmuxCommandExecutor,
     user_system_info::UserSystemInfo,
@@ -52,35 +53,8 @@ impl ChatHandler {
             }
         };
 
-        // Create executor for a specific tmux pane
         let tmux_executor = TmuxCommandExecutor::new();
-        let commands = extract_commands_to_run(&response);
-
-        // print suggested commands to stdout to further process
-        for command in commands {
-            println!("");
-            println!("I'll run the following command:");
-            println!("");
-            println!("{}", create_box(&command));
-            println!("");
-
-            let command_output = tmux_executor.execute_command(&command).unwrap();
-
-            let mut vars = std::collections::HashMap::new();
-            vars.insert("terminal_text".to_owned(), command_output.to_owned());
-            let user_input = templates.render("TERMINAL_OUTPUT_PROMPT", &vars).unwrap();
-
-            let response = provider.chat(user_input).await;
-
-            match response {
-                Ok(val) => val,
-                Err(e) => {
-                    eprintln!("Communication with LLM provider failed: {}", e);
-                    process::exit(1);
-                }
-            };
-        }
-
+        process_response(response, &tmux_executor, &mut provider).await;
         tmux_executor.terminate_session();
     }
 }
@@ -148,4 +122,35 @@ fn create_box(text: &str) -> String {
         bottom_line,
         width = max_width - padding
     )
+}
+
+#[async_recursion(?Send)]
+async fn process_response(
+    response: String,
+    tmux_executor: &TmuxCommandExecutor,
+    provider: &mut Provider,
+) {
+    // Create executor for a specific tmux pane
+    let commands = extract_commands_to_run(&response);
+
+    // print suggested commands to stdout to further process
+    for command in commands {
+        println!("");
+        println!("I'll run the following command:");
+        println!("");
+        println!("{}", create_box(&command));
+        println!("");
+
+        let command_output = tmux_executor.execute_command(&command).unwrap();
+
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("terminal_text".to_owned(), command_output.to_owned());
+        let templates = prompts::get_template();
+        let user_input = templates.render("TERMINAL_OUTPUT_PROMPT", &vars).unwrap();
+
+        let response = provider.chat(user_input).await;
+        let foo = response.unwrap();
+
+        process_response(foo, tmux_executor, provider).await;
+    }
 }
