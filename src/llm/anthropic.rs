@@ -4,6 +4,8 @@ use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
+use crate::llm::{ChatResponse, Message};
+
 use super::{ChatStream, LLMConfig, LLMError, LLMProvider};
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -22,12 +24,6 @@ struct AnthropicRequest {
     messages: Vec<Message>,
     stream: bool,
     max_tokens: u32,
-}
-
-#[derive(Serialize, Debug, Clone)]
-struct Message {
-    role: String,
-    content: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -85,15 +81,13 @@ impl LLMProvider for AnthropicProvider {
         self.conversation_history.push(Message {
             role: "system".to_string(),
             content: prompt.to_string(),
+            ..Default::default()
         });
     }
 
-    async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError> {
+    async fn chat_stream(&mut self, user_message: &Message) -> Result<ChatStream, LLMError> {
         // Add user message to history
-        self.conversation_history.push(Message {
-            role: "user".to_string(),
-            content: user_message.to_string(),
-        });
+        self.conversation_history.push(user_message.clone());
 
         let request = AnthropicRequest {
             model: self.model.clone(),
@@ -136,9 +130,17 @@ impl LLMProvider for AnthropicProvider {
                 }
 
                 if !content.is_empty() {
-                    Ok(content)
+                    let chat_response = ChatResponse {
+                        content: content,
+                        tool_calls: None,
+                    };
+                    Ok(chat_response)
                 } else {
-                    Ok(String::new())
+                    let chat_response = ChatResponse {
+                        content: String::new(),
+                        tool_calls: None,
+                    };
+                    Ok(chat_response)
                 }
             }
             Err(e) => Err(LLMError::NetworkError(e.to_string())),
@@ -146,7 +148,7 @@ impl LLMProvider for AnthropicProvider {
 
         let filtered_stream = stream.filter(|result| {
             futures::future::ready(match result {
-                Ok(content) => !content.is_empty(),
+                Ok(content) => !content.content.is_empty(),
                 Err(_) => true,
             })
         });
