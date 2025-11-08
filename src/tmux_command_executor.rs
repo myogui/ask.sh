@@ -32,7 +32,10 @@ impl TmuxCommandExecutor {
 
         // Send command with marker
         let marker = format!("__CMD_COMPLETE_{}__", Uuid::new_v4());
-        let full_command = format!("{} && echo {}", command, marker);
+        let full_command = format!(
+            "({0} && echo exit code: $? && echo {1}) || echo exit code: $? && echo {1}",
+            command, marker
+        );
 
         // Set Tmux window size
         Command::new("tmux")
@@ -64,6 +67,7 @@ impl TmuxCommandExecutor {
         // Poll until prompt reappears or timeout
         let mut attempts = 0;
         let max_attempts = 100;
+        let mut command_returned_error = false;
 
         loop {
             thread::sleep(Duration::from_millis(100));
@@ -73,10 +77,10 @@ impl TmuxCommandExecutor {
                 .output()?;
 
             let output_stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let content = output_stdout.trim_end();
+            let content_stdout = output_stdout.trim_end();
 
             // if a single line contains the marker and doesn't contain 'echo MARKER'
-            let marker_found = content
+            let marker_found = content_stdout
                 .lines()
                 .any(|line| line.contains(&marker) && !line.contains(&format!("echo {}", marker)));
 
@@ -87,8 +91,9 @@ impl TmuxCommandExecutor {
             let output_stderr = String::from_utf8_lossy(&output.stderr).to_string();
             let content_stderr = output_stderr.trim_end();
 
-            if content_stderr != "" {
-                return Ok(content_stderr.to_string());
+            if content_stdout == "" && content_stderr != "" {
+                command_returned_error = true;
+                break;
             }
 
             attempts += 1;
@@ -112,10 +117,28 @@ impl TmuxCommandExecutor {
             ])
             .output()?;
 
-        let content = String::from_utf8_lossy(&output.stdout);
-        let cleaned = self.clean_command_output(&content, &marker);
+        let mut final_output = "Command executed successfully:\n".to_string();
 
-        Ok(cleaned.to_string())
+        let mut content = String::from_utf8_lossy(&output.stdout).to_string();
+
+        if command_returned_error || !content.contains("exit code: 0") {
+            final_output =
+                format!("An error occurred running the command `{}`:\n", command).to_string();
+        }
+
+        if content == "" {
+            content = String::from_utf8_lossy(&output.stderr).to_string();
+            if content == "" {
+                content = "stdout and stderr are empty!".to_string();
+            }
+        }
+
+        let cleaned_output = self.clean_command_output(&content, &marker);
+        final_output = format!("{}{}", final_output, cleaned_output);
+
+        println!("Command output: {}", final_output);
+
+        Ok(final_output.to_string())
     }
 
     pub fn terminate_session(&self) {

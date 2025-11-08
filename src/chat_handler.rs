@@ -54,8 +54,58 @@ impl ChatHandler {
         };
 
         let tmux_executor = TmuxCommandExecutor::new();
-        process_response(response, &tmux_executor, &mut provider).await;
+        self.process_response(response, &tmux_executor, &mut provider, "".to_string())
+            .await;
+
         tmux_executor.terminate_session();
+    }
+
+    #[async_recursion(?Send)]
+    async fn process_response(
+        &self,
+        response: String,
+        tmux_executor: &TmuxCommandExecutor,
+        provider: &mut Provider,
+        previous_command: String,
+    ) {
+        // Create executor for a specific tmux pane
+        let command = extract_commands_to_run(&response)
+            .first()
+            .cloned()
+            .unwrap_or_default();
+
+        if !command.is_empty() {
+            if command.to_string() != previous_command {
+                println!("");
+                println!("I'll run the following command:");
+                println!("");
+                println!("{}", create_box(&command));
+                println!("");
+
+                let command_output = tmux_executor.execute_command(&command).unwrap();
+
+                let mut vars = std::collections::HashMap::new();
+                vars.insert("terminal_text".to_owned(), command_output.to_owned());
+                let templates = prompts::get_template();
+                let user_input = templates.render("TERMINAL_OUTPUT_PROMPT", &vars).unwrap();
+
+                let response = provider.chat(user_input).await;
+                let response = response.unwrap();
+
+                self.process_response(response, tmux_executor, provider, command.to_string())
+                    .await;
+            } else {
+                println!("");
+                println!("Previous command was the same!!");
+                println!("");
+
+                let response = provider.chat("That last command `{}` didn't work the time before. Please try another approach.".to_string()).await;
+                let response = response.unwrap();
+
+                self.process_response(response, tmux_executor, provider, command.to_string())
+                    .await;
+            }
+        }
     }
 }
 
@@ -122,35 +172,4 @@ fn create_box(text: &str) -> String {
         bottom_line,
         width = max_width - padding
     )
-}
-
-#[async_recursion(?Send)]
-async fn process_response(
-    response: String,
-    tmux_executor: &TmuxCommandExecutor,
-    provider: &mut Provider,
-) {
-    // Create executor for a specific tmux pane
-    let commands = extract_commands_to_run(&response);
-
-    // print suggested commands to stdout to further process
-    for command in commands {
-        println!("");
-        println!("I'll run the following command:");
-        println!("");
-        println!("{}", create_box(&command));
-        println!("");
-
-        let command_output = tmux_executor.execute_command(&command).unwrap();
-
-        let mut vars = std::collections::HashMap::new();
-        vars.insert("terminal_text".to_owned(), command_output.to_owned());
-        let templates = prompts::get_template();
-        let user_input = templates.render("TERMINAL_OUTPUT_PROMPT", &vars).unwrap();
-
-        let response = provider.chat(user_input).await;
-        let foo = response.unwrap();
-
-        process_response(foo, tmux_executor, provider).await;
-    }
 }
