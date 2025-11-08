@@ -4,6 +4,11 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
+use crate::{
+    llm::{ChatResponse, Message},
+    tools::Tool,
+};
+
 use super::{ChatStream, LLMConfig, LLMError, LLMProvider};
 
 #[derive(Debug, Serialize)]
@@ -14,18 +19,14 @@ struct OllamaRequest {
     keep_alive: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     options: Option<ModelOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<Tool>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct ModelOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     num_ctx: Option<u32>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct Message {
-    role: String,
-    content: String,
 }
 
 // For Ollama native format
@@ -69,24 +70,23 @@ impl LLMProvider for OllamaProvider {
         self.conversation_history.push(Message {
             role: "system".to_string(),
             content: prompt.to_string(),
+            ..Default::default()
         });
     }
 
-    async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError> {
+    async fn chat_stream(&mut self, user_message: &Message) -> Result<ChatStream, LLMError> {
         // Use Ollama's native endpoint
         let url = format!("{}/chat", self.base_url);
 
         // Add user message to history
-        self.conversation_history.push(Message {
-            role: "user".to_string(),
-            content: user_message.to_string(),
-        });
+        self.conversation_history.push(user_message.clone());
 
         let request = OllamaRequest {
             model: self.model.clone(),
             keep_alive: self.keep_alive.clone(),
             messages: self.conversation_history.clone(),
             stream: true,
+            tools: Some(self.get_available_tools()),
             options: Some(ModelOptions {
                 num_ctx: self.context_length.clone(),
                 ..Default::default()
@@ -131,9 +131,14 @@ impl LLMProvider for OllamaProvider {
                         if let Ok(response) = serde_json::from_str::<OllamaNativeResponse>(line) {
                             if let Some(message) = response.message {
                                 let content = message.content;
+                                let tool_calls = message.tool_calls.unwrap_or_default();
 
-                                if !content.is_empty() {
-                                    return Some(Ok(content));
+                                if !content.is_empty() || !tool_calls.is_empty() {
+                                    let chat_response = ChatResponse {
+                                        content: content,
+                                        tool_calls: Some(tool_calls),
+                                    };
+                                    return Some(Ok(chat_response));
                                 }
                             }
                         }

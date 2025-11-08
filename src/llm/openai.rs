@@ -10,6 +10,8 @@ use async_trait::async_trait;
 use futures::stream::StreamExt;
 use std::fmt::Debug;
 
+use crate::llm::{ChatResponse, Message};
+
 use super::{ChatStream, LLMConfig, LLMError, LLMProvider};
 
 #[derive(Debug)]
@@ -51,11 +53,11 @@ impl LLMProvider for OpenAIProvider {
         self.conversation_history.push(message);
     }
 
-    async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError> {
+    async fn chat_stream(&mut self, user_message: &Message) -> Result<ChatStream, LLMError> {
         // Add user message to history
         self.conversation_history.push(
             ChatCompletionRequestUserMessageArgs::default()
-                .content(user_message.as_str())
+                .content(user_message.content.as_str())
                 .build()
                 .map_err(|e| LLMError::InvalidRequestError(e.to_string()))?
                 .into(),
@@ -85,7 +87,13 @@ impl LLMProvider for OpenAIProvider {
                         acc.push_str(s);
                         acc
                     });
-                Ok(content)
+
+                let chat_response = ChatResponse {
+                    content: content,
+                    tool_calls: None,
+                };
+
+                Ok(chat_response)
             }
             Err(err) => Err(LLMError::ApiError(err.to_string())),
         });

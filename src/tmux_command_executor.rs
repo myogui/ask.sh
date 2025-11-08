@@ -122,8 +122,7 @@ impl TmuxCommandExecutor {
         let mut content = String::from_utf8_lossy(&output.stdout).to_string();
 
         if command_returned_error || !content.contains("exit code: 0") {
-            final_output =
-                format!("An error occurred running the command `{}`:\n", command).to_string();
+            final_output = "An error occurred running the command:\n".to_string();
         }
 
         if content == "" {
@@ -136,7 +135,7 @@ impl TmuxCommandExecutor {
         let cleaned_output = self.clean_command_output(&content, &marker);
         final_output = format!("{}{}", final_output, cleaned_output);
 
-        println!("Command output: {}", final_output);
+        // println!("Command output: {}", final_output);
 
         Ok(final_output.to_string())
     }

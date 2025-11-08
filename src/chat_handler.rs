@@ -1,49 +1,50 @@
 use async_recursion::async_recursion;
+use futures::future::join_all;
 use std::process;
 
-use regex::Regex;
-
 use crate::{
-    llm::{create_llm_provider, LLMConfig, LLMProvider, Provider},
+    llm::{create_llm_provider, LLMConfig, LLMProvider, Message, Provider},
     prompts,
-    tmux_command_executor::TmuxCommandExecutor,
+    tools::{execute_tool, ToolCall},
     user_system_info::UserSystemInfo,
 };
 
 pub struct ChatHandler {
-    pub user_system_info: UserSystemInfo,
-    llm_config: LLMConfig,
+    llm_provider: Provider,
 }
 
 impl ChatHandler {
     pub fn new(llm_config: LLMConfig) -> Self {
-        Self {
-            user_system_info: UserSystemInfo::new(),
-            llm_config: llm_config,
-        }
-    }
-
-    pub async fn process_user_prompt(&self, user_input: String) {
+        let user_system_info = UserSystemInfo::new();
         let mut vars = std::collections::HashMap::new();
-        vars.insert("user_input".to_owned(), user_input.to_owned());
-        vars.insert("user_os".to_owned(), self.user_system_info.os.to_owned());
-        vars.insert(
-            "user_arch".to_owned(),
-            self.user_system_info.arch.to_owned(),
-        );
-        vars.insert(
-            "user_shell".to_owned(),
-            self.user_system_info.shell.to_owned(),
-        );
+        vars.insert("user_os".to_owned(), user_system_info.os.to_owned());
+        vars.insert("user_arch".to_owned(), user_system_info.arch.to_owned());
+        vars.insert("user_shell".to_owned(), user_system_info.shell.to_owned());
 
         let templates = prompts::get_template();
         let system_message = templates.render("SYSTEM_PROMPT", &vars).unwrap();
+
+        let mut llm_provider = create_llm_provider(llm_config).unwrap();
+        llm_provider.with_system_prompt(&system_message);
+
+        Self {
+            llm_provider: llm_provider,
+        }
+    }
+
+    pub async fn process_user_prompt(&mut self, user_input: String) {
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("user_input".to_owned(), user_input.to_owned());
+
+        let templates = prompts::get_template();
         let user_input = templates.render("USER_PROMPT", &vars).unwrap();
+        let message = Message {
+            content: user_input,
+            role: "User".to_string(),
+            ..Default::default()
+        };
 
-        let mut provider = create_llm_provider(self.llm_config.clone()).unwrap();
-        provider.with_system_prompt(&system_message);
-
-        let response = provider.chat(user_input).await;
+        let response = &self.llm_provider.chat(&message).await;
 
         let response = match response {
             Ok(val) => val,
@@ -53,123 +54,38 @@ impl ChatHandler {
             }
         };
 
-        let tmux_executor = TmuxCommandExecutor::new();
-        self.process_response(response, &tmux_executor, &mut provider, "".to_string())
-            .await;
-
-        tmux_executor.terminate_session();
+        if let Some(tool_calls) = response.tool_calls.as_ref() {
+            if !tool_calls.is_empty() {
+                self.process_response_tool_calls(tool_calls).await;
+            }
+        }
     }
 
     #[async_recursion(?Send)]
-    async fn process_response(
-        &self,
-        response: String,
-        tmux_executor: &TmuxCommandExecutor,
-        provider: &mut Provider,
-        previous_command: String,
-    ) {
-        // Create executor for a specific tmux pane
-        let command = extract_commands_to_run(&response)
-            .first()
-            .cloned()
-            .unwrap_or_default();
+    async fn process_response_tool_calls(&mut self, tool_calls: &Vec<ToolCall>) {
+        // Execute each tool call
+        let handles = tool_calls.clone().into_iter().map(|tool_call| {
+            tokio::spawn(async move { execute_tool(&tool_call.function).await.unwrap() })
+        });
 
-        if !command.is_empty() {
-            if command.to_string() != previous_command {
-                println!("");
-                println!("I'll run the following command:");
-                println!("");
-                println!("{}", create_box(&command));
-                println!("");
+        let results = join_all(handles)
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect::<Vec<_>>();
 
-                let command_output = tmux_executor.execute_command(&command).unwrap();
+        let json_str = serde_json::to_string(&results).unwrap();
+        let tool_result_message = Message {
+            content: json_str,
+            role: "Tool".to_string(),
+            ..Default::default()
+        };
 
-                let mut vars = std::collections::HashMap::new();
-                vars.insert("terminal_text".to_owned(), command_output.to_owned());
-                let templates = prompts::get_template();
-                let user_input = templates.render("TERMINAL_OUTPUT_PROMPT", &vars).unwrap();
-
-                let response = provider.chat(user_input).await;
-                let response = response.unwrap();
-
-                self.process_response(response, tmux_executor, provider, command.to_string())
-                    .await;
-            } else {
-                println!("");
-                println!("Previous command was the same!!");
-                println!("");
-
-                let response = provider.chat("That last command `{}` didn't work the time before. Please try another approach.".to_string()).await;
-                let response = response.unwrap();
-
-                self.process_response(response, tmux_executor, provider, command.to_string())
-                    .await;
+        let response = &self.llm_provider.chat(&tool_result_message).await.unwrap();
+        if let Some(response_tool_calls) = response.tool_calls.as_ref() {
+            if !response_tool_calls.is_empty() {
+                self.process_response_tool_calls(response_tool_calls).await;
             }
         }
     }
-}
-
-fn extract_commands_to_run(text: &str) -> Vec<String> {
-    let mut commands = Vec::new();
-    // extract all commands enclosed in ``` ```
-    let re = Regex::new(r#"```(.+?)```"#).unwrap();
-    re.captures_iter(&text.replace('\n', ";")).for_each(|cap| {
-        commands.push(
-            cap[1]
-                .to_string()
-                .replace('\n', " ")
-                .trim_start_matches(';')
-                .trim_end_matches(';')
-                .trim()
-                .to_owned(),
-        );
-    });
-    // if command start from bash; or sh; remove it
-    commands = commands
-        .iter()
-        .map(|command| {
-            if command.starts_with("bash;") {
-                command.trim_start_matches("bash;").trim().to_owned()
-            } else if command.starts_with("zsh;") {
-                command.trim_start_matches("zsh;").trim().to_owned()
-            } else if command.starts_with("sh;") {
-                command.trim_start_matches("sh;").trim().to_owned()
-            } else {
-                command.to_owned()
-            }
-        })
-        .collect();
-    // deduplicate with keeping the order
-    // count the number of occurrence of each command
-    let mut counts = std::collections::HashMap::new();
-    for command in &commands {
-        let count = counts.entry(command).or_insert(0);
-        *count += 1;
-    }
-    // add only the first occurrence of each command to deduped_commands
-    // TODO: not elegant
-    let mut deduped_commands: Vec<String> = Vec::new();
-    for command in &commands {
-        if deduped_commands.contains(command) {
-        } else {
-            deduped_commands.push(command.to_string());
-        }
-    }
-    deduped_commands
-}
-
-fn create_box(text: &str) -> String {
-    let padding = 5; // For "│ ✓  " prefix
-    let max_width = text.len() + padding + 3;
-
-    let top_line = format!("╭{}╮", "─".repeat(max_width));
-    let bottom_line = format!("╰{}╯", "─".repeat(max_width));
-
-    format!(
-        "{}\n│ ✓  {:<width$} │\n{}",
-        top_line,
-        text,
-        bottom_line,
-        width = max_width - padding
-    )
 }

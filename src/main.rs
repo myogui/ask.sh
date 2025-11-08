@@ -8,6 +8,7 @@ mod chat_handler;
 mod llm;
 mod prompts;
 mod tmux_command_executor;
+mod tools;
 mod user_system_info;
 
 use chat_handler::ChatHandler;
@@ -203,6 +204,8 @@ async fn main() {
         args.join(" ")
     };
 
+    println!("");
+
     // filter out predefined args
     let user_input_without_flags = user_input
         .split_whitespace()
@@ -211,7 +214,7 @@ async fn main() {
         .join(" ");
 
     let llm_config = get_llm_config().unwrap();
-    let chat_handler = ChatHandler::new(llm_config);
+    let mut chat_handler = ChatHandler::new(llm_config);
     chat_handler
         .process_user_prompt(user_input_without_flags)
         .await;

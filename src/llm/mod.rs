@@ -1,8 +1,11 @@
 use async_trait::async_trait;
 use futures::stream::StreamExt;
 use futures::Stream;
+use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt::Debug, pin::Pin};
 use thiserror::Error;
+
+use crate::tools::{get_available_tools, Tool, ToolCall};
 
 /// Error from LLM provider
 #[derive(Debug, Error)]
@@ -44,8 +47,35 @@ impl Default for LLMConfig {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Message {
+    pub role: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl Default for Message {
+    fn default() -> Self {
+        Self {
+            role: String::new(),
+            content: String::new(),
+            tool_calls: None,
+            name: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChatResponse {
+    pub content: String,
+    pub tool_calls: Option<Vec<ToolCall>>,
+}
+
 /// Type alias for chat stream
-pub type ChatStream = Pin<Box<dyn Stream<Item = Result<String, LLMError>> + Send + 'static>>;
+pub type ChatStream = Pin<Box<dyn Stream<Item = Result<ChatResponse, LLMError>> + Send + 'static>>;
 
 /// Trait for LLM provider
 #[async_trait]
@@ -53,27 +83,36 @@ pub trait LLMProvider: Send + Sync + Debug {
     fn with_system_prompt(&mut self, prompt: &str);
 
     /// Get chat completion as a stream
-    async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError>;
+    async fn chat_stream(&mut self, user_message: &Message) -> Result<ChatStream, LLMError>;
 
-    async fn chat(&mut self, user_input: String) -> Result<String, Box<dyn Error>> {
+    async fn chat(&mut self, user_message: &Message) -> Result<ChatResponse, Box<dyn Error>> {
         let mut stream = self
-            .chat_stream(user_input)
+            .chat_stream(user_message)
             .await
             .map_err(|e| Box::new(e) as Box<dyn Error>)?;
 
-        let mut response_to_return = String::new();
+        let mut response = ChatResponse {
+            content: "".to_string(),
+            tool_calls: None,
+        };
         while let Some(result) = stream.next().await {
             match result {
                 Ok(content) => {
-                    response_to_return.push_str(&content);
-                    eprint!("{}", content);
+                    response.content.push_str(&content.content);
+                    response.tool_calls = content.tool_calls;
+                    eprint!("{}", content.content);
                 }
                 Err(err) => {
                     eprint!("{}", err);
                 }
             }
         }
-        Ok(response_to_return)
+        println!("");
+        Ok(response)
+    }
+
+    fn get_available_tools(&self) -> Vec<Tool> {
+        get_available_tools()
     }
 }
 
@@ -99,7 +138,7 @@ impl LLMProvider for Provider {
         }
     }
 
-    async fn chat_stream(&mut self, user_message: String) -> Result<ChatStream, LLMError> {
+    async fn chat_stream(&mut self, user_message: &Message) -> Result<ChatStream, LLMError> {
         match self {
             Provider::OpenAI(p) => p.chat_stream(user_message).await,
             Provider::Anthropic(p) => p.chat_stream(user_message).await,
