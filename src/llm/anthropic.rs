@@ -167,6 +167,7 @@ mod tests {
             api_key: "test-key".to_string(),
             base_url: None,
             keep_alive: None,
+            context_length: None,
         };
 
         let provider = AnthropicProvider::new(config).unwrap();

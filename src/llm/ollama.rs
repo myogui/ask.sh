@@ -11,7 +11,15 @@ struct OllamaRequest {
     model: String,
     messages: Vec<Message>,
     stream: bool,
-    keep_alive: Option<i64>,
+    keep_alive: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options: Option<ModelOptions>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct ModelOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_ctx: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -32,7 +40,8 @@ pub struct OllamaProvider {
     client: Client,
     base_url: String,
     model: String,
-    keep_alive: Option<i64>,
+    keep_alive: Option<i32>,
+    context_length: Option<u32>,
     conversation_history: Vec<Message>,
 }
 
@@ -47,6 +56,7 @@ impl OllamaProvider {
             base_url,
             model: config.model,
             keep_alive: config.keep_alive,
+            context_length: config.context_length,
             conversation_history: Vec::new(),
         })
     }
@@ -77,6 +87,10 @@ impl LLMProvider for OllamaProvider {
             keep_alive: self.keep_alive.clone(),
             messages: self.conversation_history.clone(),
             stream: true,
+            options: Some(ModelOptions {
+                num_ctx: self.context_length.clone(),
+                ..Default::default()
+            }),
         };
 
         let response = self
@@ -146,6 +160,7 @@ mod tests {
             api_key: String::new(), // Not needed for Ollama
             base_url: Some("http://localhost:11434".to_string()),
             keep_alive: Some(-1),
+            context_length: Some(8192),
         };
 
         let provider = OllamaProvider::new(config).unwrap();

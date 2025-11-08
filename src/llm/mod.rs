@@ -27,7 +27,8 @@ pub struct LLMConfig {
     pub model: String,
     pub api_key: String,
     pub base_url: Option<String>, // Custom endpoint URL (for OpenAI and Ollama)
-    pub keep_alive: Option<i64>,  // Amount of minutes to keep the model loaded (Ollama only)
+    pub keep_alive: Option<i32>,  // Amount of minutes to keep the model loaded (Ollama only)
+    pub context_length: Option<u32>, // Context length to pass to Ollama (Ollama only)
 }
 
 impl Default for LLMConfig {
@@ -38,6 +39,7 @@ impl Default for LLMConfig {
             api_key: String::new(),
             base_url: None,
             keep_alive: None,
+            context_length: None,
         }
     }
 }

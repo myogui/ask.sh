@@ -33,6 +33,7 @@ const ENV_ANTHROPIC_MODEL: &str = "ASK_SH_ANTHROPIC_MODEL";
 const ENV_OLLAMA_BASE_URL: &str = "ASK_SH_OLLAMA_BASE_URL";
 const ENV_OLLAMA_MODEL: &str = "ASK_SH_OLLAMA_MODEL";
 const ENV_OLLAMA_KEEP_ALIVE: &str = "ASK_SH_OLLAMA_KEEP_ALIVE";
+const ENV_OLLAMA_CONTEXT_LENGTH: &str = "ASK_SH_OLLAMA_CONTEXT_LENGTH";
 
 fn get_llm_config() -> Result<LLMConfig, LLMError> {
     // Select provider (default is OpenAI)
@@ -53,6 +54,7 @@ fn get_llm_config() -> Result<LLMConfig, LLMError> {
                 model,
                 base_url,
                 keep_alive: None,
+                context_length: None,
             })
         }
         "anthropic" => {
@@ -68,6 +70,7 @@ fn get_llm_config() -> Result<LLMConfig, LLMError> {
                 model,
                 base_url: None, // Anthropic does not support custom endpoints
                 keep_alive: None,
+                context_length: None,
             })
         }
         "ollama" => {
@@ -77,7 +80,11 @@ fn get_llm_config() -> Result<LLMConfig, LLMError> {
 
             let base_url = env::var(ENV_OLLAMA_BASE_URL).ok();
 
-            let keep_alive: Option<i64> = env::var(ENV_OLLAMA_KEEP_ALIVE)
+            let keep_alive: Option<i32> = env::var(ENV_OLLAMA_KEEP_ALIVE)
+                .ok()
+                .and_then(|s| s.parse().ok());
+
+            let context_length: Option<u32> = env::var(ENV_OLLAMA_CONTEXT_LENGTH)
                 .ok()
                 .and_then(|s| s.parse().ok());
 
@@ -87,6 +94,7 @@ fn get_llm_config() -> Result<LLMConfig, LLMError> {
                 model,
                 base_url,
                 keep_alive,
+                context_length,
             })
         }
         _ => Err(LLMError::ConfigError(format!(
