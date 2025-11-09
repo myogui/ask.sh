@@ -1,6 +1,6 @@
 use std::process::Command;
 use std::time::Duration;
-use std::{env, thread};
+use std::{env, io, thread};
 
 use uuid::Uuid;
 
@@ -120,14 +120,16 @@ impl TmuxCommandExecutor {
         let mut final_output = "Command executed successfully:\n".to_string();
 
         let mut content = String::from_utf8_lossy(&output.stdout).to_string();
+        command_returned_error = command_returned_error || !content.contains("exit code: 0");
 
-        if command_returned_error || !content.contains("exit code: 0") {
+        if command_returned_error {
             final_output = "An error occurred running the command:\n".to_string();
         }
 
         if content == "" {
             content = String::from_utf8_lossy(&output.stderr).to_string();
             if content == "" {
+                command_returned_error = true;
                 content = "stdout and stderr are empty!".to_string();
             }
         }
@@ -135,9 +137,11 @@ impl TmuxCommandExecutor {
         let cleaned_output = self.clean_command_output(&content, &marker);
         final_output = format!("{}{}", final_output, cleaned_output);
 
-        // println!("Command output: {}", final_output);
-
-        Ok(final_output.to_string())
+        if command_returned_error {
+            Err(Box::new(io::Error::new(io::ErrorKind::Other, final_output)))
+        } else {
+            Ok(final_output.to_string())
+        }
     }
 
     pub fn terminate_session(&self) {
