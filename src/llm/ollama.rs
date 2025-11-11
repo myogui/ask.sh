@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use futures::stream::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::fmt::Debug;
 
 use crate::{
@@ -92,6 +93,11 @@ impl LLMProvider for OllamaProvider {
                 ..Default::default()
             }),
         };
+
+        // println!(
+        //     "{}",
+        //     serde_json::to_string_pretty(&self.conversation_history).unwrap()
+        // );
 
         let response = self
             .client

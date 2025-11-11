@@ -40,7 +40,7 @@ impl ChatHandler {
         let user_input = templates.render("USER_PROMPT", &vars).unwrap();
         let message = Message {
             content: user_input,
-            role: "User".to_string(),
+            role: "user".to_string(),
             ..Default::default()
         };
 
@@ -54,35 +54,32 @@ impl ChatHandler {
             }
         };
 
-        if let Some(tool_calls) = response.tool_calls.as_ref() {
-            if !tool_calls.is_empty() {
-                self.process_response_tool_calls(tool_calls).await;
-            }
-        }
+        let tool_calls = response.tool_calls.clone().unwrap();
+        self.process_response_tool_calls(tool_calls).await;
     }
 
     #[async_recursion(?Send)]
-    async fn process_response_tool_calls(&mut self, tool_calls: &Vec<ToolCall>) {
-        // Execute each tool call
-        let handles = tool_calls.clone().into_iter().map(|tool_call| {
-            tokio::spawn(async move { execute_tool(&tool_call.function).await.unwrap() })
-        });
+    async fn process_response_tool_calls(&mut self, tool_calls: Vec<ToolCall>) {
+        if !tool_calls.is_empty() {
+            // Execute each tool call
+            let handles = tool_calls.into_iter().map(|tool_call| {
+                tokio::spawn(async move { execute_tool(&tool_call.function).await.unwrap() })
+            });
 
-        let results = join_all(handles)
-            .await
-            .into_iter()
-            .map(|r| r.unwrap())
-            .collect::<Vec<_>>();
+            let results = join_all(handles)
+                .await
+                .into_iter()
+                .map(|r| r.unwrap())
+                .collect::<Vec<_>>();
 
-        let json_str = serde_json::to_string(&results).unwrap();
-        let tool_result_message = Message {
-            content: json_str,
-            role: "Tool".to_string(),
-            ..Default::default()
-        };
+            let tool_result_message = Message {
+                content: serde_json::to_string_pretty(&results).unwrap(),
+                role: "tool".to_string(),
+                ..Default::default()
+            };
 
-        let response = &self.llm_provider.chat(&tool_result_message).await.unwrap();
-        if let Some(response_tool_calls) = response.tool_calls.as_ref() {
+            let response = &self.llm_provider.chat(&tool_result_message).await.unwrap();
+            let response_tool_calls = response.tool_calls.clone().unwrap();
             if !response_tool_calls.is_empty() {
                 self.process_response_tool_calls(response_tool_calls).await;
             }

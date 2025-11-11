@@ -15,20 +15,16 @@ impl ExecuteCommandToolBuilder {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "execute_command".to_string(),
-                description: "Execute a shell command based on user intent".to_string(),
+                description: "Execute a shell command when the user asks to run terminal commands, check system status, or perform local operations".to_string(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
                         "command": {
                             "type": "string",
                             "description": "The shell command to execute"
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "A brief explanation of what the command does"
                         }
                     },
-                    "required": ["command", "description"]
+                    "required": ["command"]
                 }),
             },
         }
@@ -40,8 +36,6 @@ impl ExecuteCommandTool {
     pub fn call_tool_function(function_call: &FunctionCall) -> ToolCallResult {
         let command = function_call.arguments["command"].as_str().unwrap_or("");
 
-        // let boxed_command = create_box(command);
-        // println!("{}", &boxed_command);
         let spinner = display_command_with_spinner_status(command);
 
         let tmux_executor = TmuxCommandExecutor::new();
@@ -68,7 +62,7 @@ impl ExecuteCommandTool {
 
         ToolCallResult {
             function_call: function_call.clone(),
-            content: command_output,
+            content: serde_json::Value::String(command_output),
         }
     }
 }

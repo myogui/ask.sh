@@ -35,6 +35,7 @@ const ENV_OLLAMA_BASE_URL: &str = "ASK_SH_OLLAMA_BASE_URL";
 const ENV_OLLAMA_MODEL: &str = "ASK_SH_OLLAMA_MODEL";
 const ENV_OLLAMA_KEEP_ALIVE: &str = "ASK_SH_OLLAMA_KEEP_ALIVE";
 const ENV_OLLAMA_CONTEXT_LENGTH: &str = "ASK_SH_OLLAMA_CONTEXT_LENGTH";
+const ENV_SEARXNG_BASE_URL: &str = "ASK_SH_SEARXNG_BASE_URL";
 
 fn get_llm_config() -> Result<LLMConfig, LLMError> {
     // Select provider (default is OpenAI)
