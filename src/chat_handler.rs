@@ -1,6 +1,8 @@
 use async_recursion::async_recursion;
 use futures::future::join_all;
+use std::io::Write;
 use std::process;
+use std::process::Command;
 
 use crate::{
     llm::{create_llm_provider, LLMConfig, LLMProvider, Message, Provider},
@@ -11,6 +13,7 @@ use crate::{
 
 pub struct ChatHandler {
     llm_provider: Provider,
+    display_fn: Option<fn(&str) -> Result<(), Box<dyn std::error::Error>>>,
 }
 
 impl ChatHandler {
@@ -21,6 +24,11 @@ impl ChatHandler {
         vars.insert("user_arch".to_owned(), user_system_info.arch.to_owned());
         vars.insert("user_shell".to_owned(), user_system_info.shell.to_owned());
 
+        let mut display_fn: Option<fn(&str) -> Result<(), Box<dyn std::error::Error>>> = None;
+        if get_glow_installed() {
+            display_fn = Some(display_with_glow_pipe);
+        }
+
         let templates = prompts::get_template();
         let system_message = templates.render("SYSTEM_PROMPT", &vars).unwrap();
 
@@ -29,6 +37,7 @@ impl ChatHandler {
 
         Self {
             llm_provider: llm_provider,
+            display_fn: display_fn,
         }
     }
 
@@ -44,7 +53,7 @@ impl ChatHandler {
             ..Default::default()
         };
 
-        let response = &self.llm_provider.chat(&message).await;
+        let response = &self.llm_provider.chat(&message, self.display_fn).await;
 
         let response = match response {
             Ok(val) => val,
@@ -78,11 +87,38 @@ impl ChatHandler {
                 ..Default::default()
             };
 
-            let response = &self.llm_provider.chat(&tool_result_message).await.unwrap();
+            let response = &self
+                .llm_provider
+                .chat(&tool_result_message, self.display_fn)
+                .await
+                .unwrap();
             let response_tool_calls = response.tool_calls.clone().unwrap();
             if !response_tool_calls.is_empty() {
                 self.process_response_tool_calls(response_tool_calls).await;
             }
         }
     }
+}
+
+fn get_glow_installed() -> bool {
+    // Use sh -c to run echo | glow
+    let glow_version = Command::new("glow").arg("-v").output();
+    glow_version.is_ok()
+}
+
+fn display_with_glow_pipe(content: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Use sh -c to run echo | glow
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg("glow -s auto -w 100 -")
+        .stdin(std::process::Stdio::piped())
+        .spawn()?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(content.as_bytes())?;
+    }
+
+    child.wait()?;
+
+    Ok(())
 }

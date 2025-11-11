@@ -2,7 +2,6 @@ pub mod execute_command;
 pub mod searxng_web_search;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use thiserror::Error;
 
 use crate::tools::execute_command::{ExecuteCommandTool, ExecuteCommandToolBuilder};

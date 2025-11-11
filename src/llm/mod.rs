@@ -2,7 +2,13 @@ use async_trait::async_trait;
 use futures::stream::StreamExt;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, fmt::Debug, pin::Pin};
+use std::{
+    error::Error,
+    fmt::Debug,
+    io::{stdout, Write},
+    pin::Pin,
+};
+use termimad::crossterm::{cursor, terminal, ExecutableCommand};
 use thiserror::Error;
 
 use crate::tools::{get_available_tools, Tool, ToolCall};
@@ -85,7 +91,14 @@ pub trait LLMProvider: Send + Sync + Debug {
     /// Get chat completion as a stream
     async fn chat_stream(&mut self, user_message: &Message) -> Result<ChatStream, LLMError>;
 
-    async fn chat(&mut self, user_message: &Message) -> Result<ChatResponse, Box<dyn Error>> {
+    async fn chat<F>(
+        &mut self,
+        user_message: &Message,
+        display_fn: Option<F>,
+    ) -> Result<ChatResponse, Box<dyn Error>>
+    where
+        F: Fn(&str) -> Result<(), Box<dyn std::error::Error>> + Send,
+    {
         let mut stream = self
             .chat_stream(user_message)
             .await
@@ -95,19 +108,37 @@ pub trait LLMProvider: Send + Sync + Debug {
             content: "".to_string(),
             tool_calls: None,
         };
+
+        let mut stdout = stdout();
+
+        // Save cursor position
+        let start_line = cursor::position()?.1;
+
         while let Some(result) = stream.next().await {
             match result {
                 Ok(content) => {
                     response.content.push_str(&content.content);
                     response.tool_calls = content.tool_calls;
-                    eprint!("{}", content.content);
+
+                    // Print plain text immediately
+                    print!("{}", content.content);
+                    std::io::stdout().flush()?;
                 }
                 Err(err) => {
-                    eprint!("{}", err);
+                    eprintln!("{}", err);
                 }
             }
         }
-        println!("");
+        println!();
+
+        if display_fn.is_some() {
+            // Clear from start position and re-render
+            stdout.execute(cursor::MoveTo(0, start_line))?;
+            stdout.execute(terminal::Clear(terminal::ClearType::FromCursorDown))?;
+
+            (display_fn.unwrap())(&response.content)?;
+        }
+
         Ok(response)
     }
 

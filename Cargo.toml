@@ -28,6 +28,7 @@ indicatif = "0.18.2"
 cli-boxes = "0.1.1"
 console = "0.16.1"
 unicode-width = "0.2.2"
+termimad = "0.34.0"
 
 [[bin]]
 name = "ask-sh"
