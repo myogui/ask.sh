@@ -63,8 +63,10 @@ impl ChatHandler {
             }
         };
 
-        let tool_calls = response.tool_calls.clone().unwrap();
-        self.process_response_tool_calls(tool_calls).await;
+        if response.tool_calls.is_some() {
+            let tool_calls = response.tool_calls.clone().unwrap();
+            self.process_response_tool_calls(tool_calls).await;
+        }
     }
 
     #[async_recursion(?Send)]

@@ -2,7 +2,8 @@ use async_openai::{
     config::OpenAIConfig,
     types::{
         ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
-        ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs,
+        ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionToolType,
+        CreateChatCompletionRequestArgs, FunctionObject,
     },
     Client,
 };
@@ -10,7 +11,10 @@ use async_trait::async_trait;
 use futures::stream::StreamExt;
 use std::fmt::Debug;
 
-use crate::llm::{ChatResponse, Message};
+use crate::{
+    llm::{ChatResponse, Message},
+    tools::Tool,
+};
 
 use super::{ChatStream, LLMConfig, LLMError, LLMProvider};
 
@@ -19,6 +23,7 @@ pub struct OpenAIProvider {
     client: Client<OpenAIConfig>,
     model: String,
     conversation_history: Vec<ChatCompletionRequestMessage>,
+    tools: Option<Vec<ChatCompletionTool>>,
 }
 
 impl OpenAIProvider {
@@ -32,10 +37,15 @@ impl OpenAIProvider {
 
         let client = Client::with_config(openai_config);
 
+        let chat_tools: Option<Vec<ChatCompletionTool>> = config
+            .tools
+            .map(|vec| vec.into_iter().map(|tool| tool.into()).collect());
+
         Ok(Self {
             client,
             model: config.model,
             conversation_history: Vec::new(),
+            tools: chat_tools,
         })
     }
 }
@@ -63,11 +73,18 @@ impl LLMProvider for OpenAIProvider {
                 .into(),
         );
 
-        let request = CreateChatCompletionRequestArgs::default()
-            .model(&self.model)
-            .messages(self.conversation_history.clone())
-            .build()
-            .map_err(|e| LLMError::InvalidRequestError(e.to_string()))?;
+        let request = match &self.tools {
+            Some(tools) => CreateChatCompletionRequestArgs::default()
+                .model(&self.model)
+                .messages(self.conversation_history.clone())
+                .tools(tools.clone())
+                .build(),
+            None => CreateChatCompletionRequestArgs::default()
+                .model(&self.model)
+                .messages(self.conversation_history.clone())
+                .build(),
+        }
+        .map_err(|e| LLMError::InvalidRequestError(e.to_string()))?;
 
         let stream = self
             .client
@@ -102,6 +119,20 @@ impl LLMProvider for OpenAIProvider {
     }
 }
 
+impl From<Tool> for ChatCompletionTool {
+    fn from(tool: Tool) -> Self {
+        ChatCompletionTool {
+            // map fields from Tool to ChatCompletionTool
+            r#type: ChatCompletionToolType::Function,
+            function: FunctionObject {
+                name: tool.function.name,
+                description: Some(tool.function.description),
+                parameters: Some(tool.function.parameters),
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +146,7 @@ mod tests {
             base_url: None,
             keep_alive: None,
             context_length: None,
+            tools: None,
         };
 
         let provider = OpenAIProvider::new(config).unwrap();

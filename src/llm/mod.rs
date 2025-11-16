@@ -11,7 +11,7 @@ use std::{
 use termimad::crossterm::{cursor, terminal, ExecutableCommand};
 use thiserror::Error;
 
-use crate::tools::{get_available_tools, Tool, ToolCall};
+use crate::tools::{Tool, ToolCall};
 
 /// Error from LLM provider
 #[derive(Debug, Error)]
@@ -38,6 +38,7 @@ pub struct LLMConfig {
     pub base_url: Option<String>, // Custom endpoint URL (for OpenAI and Ollama)
     pub keep_alive: Option<i32>,  // Amount of minutes to keep the model loaded (Ollama only)
     pub context_length: Option<u32>, // Context length to pass to Ollama (Ollama only)
+    pub tools: Option<Vec<Tool>>,
 }
 
 impl Default for LLMConfig {
@@ -49,6 +50,7 @@ impl Default for LLMConfig {
             base_url: None,
             keep_alive: None,
             context_length: None,
+            tools: None,
         }
     }
 }
@@ -140,10 +142,6 @@ pub trait LLMProvider: Send + Sync + Debug {
         }
 
         Ok(response)
-    }
-
-    fn get_available_tools(&self) -> Vec<Tool> {
-        get_available_tools()
     }
 }
 

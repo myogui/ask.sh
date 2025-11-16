@@ -44,6 +44,7 @@ pub struct OllamaProvider {
     keep_alive: Option<i32>,
     context_length: Option<u32>,
     conversation_history: Vec<Message>,
+    tools: Option<Vec<Tool>>,
 }
 
 impl OllamaProvider {
@@ -59,6 +60,7 @@ impl OllamaProvider {
             keep_alive: config.keep_alive,
             context_length: config.context_length,
             conversation_history: Vec::new(),
+            tools: config.tools,
         })
     }
 }
@@ -86,17 +88,12 @@ impl LLMProvider for OllamaProvider {
             keep_alive: self.keep_alive.clone(),
             messages: self.conversation_history.clone(),
             stream: true,
-            tools: Some(self.get_available_tools()),
+            tools: self.tools.clone(),
             options: Some(ModelOptions {
                 num_ctx: self.context_length.clone(),
                 ..Default::default()
             }),
         };
-
-        // println!(
-        //     "{}",
-        //     serde_json::to_string_pretty(&self.conversation_history).unwrap()
-        // );
 
         let response = self
             .client
@@ -171,6 +168,7 @@ mod tests {
             base_url: Some("http://localhost:11434".to_string()),
             keep_alive: Some(-1),
             context_length: Some(8192),
+            tools: None,
         };
 
         let provider = OllamaProvider::new(config).unwrap();

@@ -57,6 +57,7 @@ fn get_llm_config() -> Result<LLMConfig, LLMError> {
                 base_url,
                 keep_alive: None,
                 context_length: None,
+                tools: None, // Some(tools::get_available_tools()),
             })
         }
         "anthropic" => {
@@ -73,6 +74,7 @@ fn get_llm_config() -> Result<LLMConfig, LLMError> {
                 base_url: None, // Anthropic does not support custom endpoints
                 keep_alive: None,
                 context_length: None,
+                tools: Some(tools::get_available_tools()),
             })
         }
         "ollama" => {
@@ -97,6 +99,7 @@ fn get_llm_config() -> Result<LLMConfig, LLMError> {
                 base_url,
                 keep_alive,
                 context_length,
+                tools: Some(tools::get_available_tools()),
             })
         }
         _ => Err(LLMError::ConfigError(format!(

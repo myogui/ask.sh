@@ -7,12 +7,6 @@ use thiserror::Error;
 use crate::tools::execute_command::{ExecuteCommandTool, ExecuteCommandToolBuilder};
 use crate::tools::searxng_web_search::{WebSearchTool, WebSearchToolBuilder};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Tool {
-    #[serde(rename = "type")]
-    tool_type: String,
-    function: FunctionDef,
-}
 #[derive(Debug, Error)]
 pub enum ToolError {
     #[error("API error: {0}")]
@@ -20,10 +14,17 @@ pub enum ToolError {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Tool {
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: FunctionDef,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FunctionDef {
-    name: String,
-    description: String,
-    parameters: serde_json::Value,
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

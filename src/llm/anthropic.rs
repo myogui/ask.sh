@@ -170,6 +170,7 @@ mod tests {
             base_url: None,
             keep_alive: None,
             context_length: None,
+            tools: None,
         };
 
         let provider = AnthropicProvider::new(config).unwrap();
