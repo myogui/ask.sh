@@ -33,7 +33,7 @@ impl TmuxCommandExecutor {
         // Send command with marker
         let marker = format!("__CMD_COMPLETE_{}__", Uuid::new_v4());
         let full_command = format!(
-            "({0} && echo exit code: $? && echo {1}) || echo exit code: $? && echo {1}",
+            "(({0} | cat) && echo exit code: $? && echo {1}) || (echo exit code: $? && echo {1})",
             command, marker
         );
 
@@ -99,7 +99,7 @@ impl TmuxCommandExecutor {
             attempts += 1;
 
             if attempts >= max_attempts {
-                return Err("Command timeout".into());
+                return Err("Command timed out".into());
             }
         }
 
@@ -229,7 +229,11 @@ impl TmuxCommandExecutor {
                 .output()?;
 
             if check.status.success() {
-                return Ok(()); // Session already exists
+                Command::new("tmux")
+                    .arg("kill-pane")
+                    .arg("-t")
+                    .arg(&self.session)
+                    .arg("Enter");
             }
 
             // Create session

@@ -1,5 +1,6 @@
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
+use inquire::Confirm;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{
@@ -37,11 +38,10 @@ impl ExecuteCommandTool {
         let command = function_call.arguments["command"].as_str().unwrap_or("");
 
         let spinner = display_command_with_spinner_status(command);
+        let command_output: String;
 
         let tmux_executor = TmuxCommandExecutor::new();
         let command_result = tmux_executor.execute_command(command);
-
-        let command_output: String;
 
         match command_result {
             Ok(output) => {
@@ -50,15 +50,14 @@ impl ExecuteCommandTool {
             }
             Err(error_output) => {
                 update_spinner_status(&spinner, command, false);
-                command_output = error_output.to_string()
+                command_output = error_output.to_string();
             }
         }
 
-        // println!("{}", command_output);
-        println!();
-        println!();
-
         tmux_executor.terminate_session();
+
+        println!();
+        println!();
 
         ToolCallResult {
             function_call: function_call.clone(),
