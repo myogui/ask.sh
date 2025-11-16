@@ -69,18 +69,17 @@ impl ExecuteCommandTool {
 
 fn display_command_with_spinner_status(command: &str) -> ProgressBar {
     let template = create_progress_bar_template(command);
-    let ticks: Vec<String> = vec!["◐", "◓", "◑", "◒"]
+    let spinner: Vec<String> = vec!['⣷', '⣯', '⣟', '⡿', '⢿', '⣻', '⣽', '⣾']
         .into_iter()
-        .map(|s| style(s).yellow().to_string())
+        .map(|s| style(s).cyan().bright().to_string())
         .collect();
 
-    // Then, you need a Vec<&str> from Vec<String>:
-    let ticks_ref: Vec<&str> = ticks.iter().map(|s| s.as_str()).collect();
+    let spinner_ref: Vec<&str> = spinner.iter().map(|s| s.as_str()).collect();
     let progress_bar = ProgressBar::new_spinner();
     progress_bar.set_style(
         ProgressStyle::with_template(&template)
             .unwrap()
-            .tick_strings(&ticks_ref),
+            .tick_strings(&spinner_ref),
     );
     progress_bar.set_message(command.to_string());
     progress_bar.enable_steady_tick(std::time::Duration::from_millis(150));
