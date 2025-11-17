@@ -5,6 +5,7 @@ use std::{
 };
 
 mod chat_handler;
+mod command_analyser;
 mod llm;
 mod prompts;
 mod tmux_command_executor;

@@ -4,6 +4,7 @@ use inquire::Confirm;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{
+    command_analyser::CommandAnalyser,
     tmux_command_executor::TmuxCommandExecutor,
     tools::{FunctionCall, FunctionDef, Tool, ToolCallResult},
 };
@@ -37,26 +38,43 @@ impl ExecuteCommandTool {
     pub fn call_tool_function(function_call: &FunctionCall) -> ToolCallResult {
         let command = function_call.arguments["command"].as_str().unwrap_or("");
 
+        let mut prompt_result: Option<Result<bool, inquire::InquireError>> = None;
+
+        let (needs_approval, approval_reason) = CommandAnalyser::requires_approval(command);
+
+        if needs_approval {
+            let result = Confirm::new("Is it alright if I run this command and read the output?")
+                .with_help_message(format!("{} ({})", &command, &approval_reason.unwrap()).as_ref())
+                .with_default(false)
+                .prompt();
+            prompt_result = Some(result);
+
+            println!();
+        }
+
         let spinner = display_command_with_spinner_status(command);
         let command_output: String;
 
-        let tmux_executor = TmuxCommandExecutor::new();
-        let command_result = tmux_executor.execute_command(command);
+        if prompt_result.is_none() || prompt_result.unwrap().is_ok_and(|r| r == true) {
+            let tmux_executor = TmuxCommandExecutor::new();
+            let command_result = tmux_executor.execute_command(command);
 
-        match command_result {
-            Ok(output) => {
-                update_spinner_status(&spinner, command, true);
-                command_output = output;
+            match command_result {
+                Ok(output) => {
+                    update_spinner_status(&spinner, command, true);
+                    command_output = output;
+                }
+                Err(error_output) => {
+                    update_spinner_status(&spinner, command, false);
+                    command_output = error_output.to_string();
+                }
             }
-            Err(error_output) => {
-                update_spinner_status(&spinner, command, false);
-                command_output = error_output.to_string();
-            }
+            tmux_executor.terminate_session();
+        } else {
+            update_spinner_status(&spinner, command, false);
+            command_output = "Command rejected by the user.".to_string();
         }
 
-        tmux_executor.terminate_session();
-
-        println!();
         println!();
 
         ToolCallResult {
